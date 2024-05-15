@@ -2,10 +2,9 @@
 
 Welcome to the AC Fault Detection Project.
 - [Project Scope]()
-- [Hardware Block Diegram]()
+- [Hardware Block Diagram]()
 - [Software Block Diagram]()
 
 **Project Structure**
 
-**Contact**
-For questions or comments, please send them to:
+
