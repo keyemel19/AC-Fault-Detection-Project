@@ -7,11 +7,13 @@ AC Fault Detection Sytem. The project includes speed control, voltage and curren
 
 ## Features
 
-- Adjust task times using a button
-- Take user input via TTY
-- Suspend a process after a certain number of runs
-- Output messages when processes are suspended
-
+- **Fault Detection**: Detect faults in power lines using voltage and current measurements.
+- **Alert Mechanism**: Alert the operator with a buzzer or light when a fault is detected.
+- **Relay Control**: Open a relay to isolate the faulty phase.
+- **TDR Integration**: Use a Time Domain Reflectometer (TDR) to locate the fault.
+- **Speed Control**: Control the speed using a Variable Frequency Drive (VFD).
+- **Power Calculation**: Calculate and display RMS power, voltage, and current measurements on an LCD.
+- **User Interaction**: Adjust settings and control operations using buttons.
 ## Getting Started
 
 ### Prerequisites
