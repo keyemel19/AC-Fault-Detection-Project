@@ -7,7 +7,7 @@
 This simulation is important because it reflects in the real-world issues like fire risks, power loss, reduced efficiency, and financial impacts on electrical companies. Additionally, we may include a Variable Frequency Drive (VFD) to ensure consistent AC power and an LCD display to show RMS power, voltage, and current measurements.
 
 
-- [System Architechture]()
+- [System Architechture](https://github.com/keyemel19/AC-Fault-Detection-Project/blob/main/ARCHITECTURE.md)
 - [Hardware Block Diagram]()
 - [Software Block Diagram]()
 
