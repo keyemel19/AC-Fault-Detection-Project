@@ -24,4 +24,4 @@ AC Fault Detection Sytem. The project includes speed control, voltage and curren
 
 1. Clone the repository:
    ```sh
-   
+   https://github.com/keyemel19/AC-Fault-Detection-Project.git
