@@ -139,6 +139,8 @@ void setup() {
   xTaskCreate( I_Reader, "Read_Cur", 256,   (void *) &Current,         1,     &ReadCurrent); //Task to get the readings of the current
   xTaskCreate(Tog_Relys, "Tog_Rlys",   4,    (void *) &Relays,         1,    &Relay_Switch); //Task to toggle the relays //We may need to implement a Semiphore for the Relay,Button,& Buzzer Functions.
   xTaskCreate(Button_Pr,"Get_Press",  16,(void *) &Button_Loc,         2,    &Button_Press); //Task to get Button Press.  
+  //create communication protocol for arduino to other board. 
+  
   //StartUpMessage()      //This may not work with RTOS.        
   printf("Setup completed\n");
   //vTaskStartScheduler();
