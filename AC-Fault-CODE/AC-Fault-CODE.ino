@@ -112,6 +112,8 @@ void setup() {
   pinMode(Analog1, INPUT); 
   pinMode(Analog2, INPUT); 
   pinMode(Analog3, INPUT);
+  pinMode(Button_Loc,INPUT);
+  pinMode(Relays,OUTPUT);
   delay(1000);
 
   printf("Begin");
@@ -266,10 +268,33 @@ void Tog_Relys(void * parameters) {
 }
 
 void Button_Pr(void * parameters) {
+  /*Detect press of button*/
   printf("This is task: %s\n", pcTaskGetName(NULL));
+  int8_t *buttonPin = *parameters
 
+  int Button_Position = 0;
   for (;;) {
-    
+        // Read the state of the switch into a local variable
+    int buttonState = digitalRead(buttonPin);
+
+    // Check if the state of the switch has changed
+    if (buttonState != lastButtonState) {
+      // Reset the debounce timer
+      lastDebounceTime = millis();
+    }
+
+    // Check if enough time has passed to consider it stable
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      // Update the last button state
+      lastButtonState = buttonState;
+
+      // Release the semaphore to indicate debounced state
+      xSemaphoreGive(debounceSemaphore);
+    }
+
+    // Delay to avoid high CPU usage
+    //vTaskDelay(pdMS_TO_TICKS(10)); // Delay for 10 milliseconds
+  
     vTaskDelay( 500 / portTICK_PERIOD_MS);
   }
 }
