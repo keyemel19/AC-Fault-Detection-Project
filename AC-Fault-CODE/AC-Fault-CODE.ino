@@ -190,6 +190,7 @@ struct CurrentReadings  {
     
 }
 void Disp_LCD(void * parameters) {
+    // update the display to use the i2c protocol. the pins on the arduino are scl: 19 and sda: 18. 
   printf("This is task: %s\n", pcTaskGetName(NULL));
   //int receivedData;
 
