@@ -348,7 +348,7 @@ void Button_Pr(void * parameters) {
 
     if (buttonState == HIGH) {
       //perform actions based on button press e.g, reset the system, acknowledge alarms or change settings
-      Serial.prinln("Button pressed! Performing action.")
+      Serial.println("Button pressed! Performing action.")
       // add the button press handling code here
     }
     vTaskDelay( 500 / portTICK_PERIOD_MS);
