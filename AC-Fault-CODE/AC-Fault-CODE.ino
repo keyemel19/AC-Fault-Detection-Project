@@ -10,8 +10,9 @@
 #include <Arduino_FreeRTOS.h>
 #include <LibPrintf.h>
 #include <ArduinoJson.h>
-//#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h> // I2C LCD
 #include <queue.h>
+#include <Wire.h> // I2C communication
 
 //Define Queue
 #define QUEUE_LENGTH 9
@@ -55,7 +56,11 @@ constexpr uint8_t Analog0 = PIN_A0; // connection for the Neutral line
 constexpr uint8_t Analog1 = PIN_A1; // connection for the A phase.
 constexpr uint8_t Analog2 = PIN_A2; // connection for the B phase.
 constexpr uint8_t Analog3 = PIN_A3; // connection for the C phase. 
-
+// I2C LCD Configuration
+constexpr uint8_t LCD_COLS = 16;
+constexpr uint8_t LCD_ROWS = 2;
+constexpr uint8_t LCD_ADDR = 0x27; // I2C address
+LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 
 // Two blink tasks (forward declarations)
 void TaskBlinkRed( void *pvParameters );
@@ -113,6 +118,10 @@ void setup() {
   pinMode(Analog2, INPUT); 
   pinMode(Analog3, INPUT);
   delay(1000);
+    
+    Wire.begin(19, 18); // SCL-pin 19 SDA-pin 18
+    lcd.init();
+    lcd.backlight();
 
   printf("Begin");
   //Fill out the Structs
@@ -181,21 +190,21 @@ double calculateRMS(const double* voltageSamples, double& rmsVoltage, int numSam
     double meanOfSquares = sumOfSquares / numSamples;
     return sqrt(meanOfSquares);
     
-  //store an arary of voltage samples
-struct CurrentReadings  {
-    int value_0[10];
-    int value_2[10];
-    int value_3[10];
+  //store an ary of voltage samples
+// struct CurrentReadings  {
+//     double value_0[10];
+//     double value_2[10];
+//     double value_3[10];
   }; 
     
 }
+
 void Disp_LCD(void * parameters) {
     // update the display to use the i2c protocol. the pins on the arduino are scl: 19 and sda: 18. 
   printf("This is task: %s\n", pcTaskGetName(NULL));
-  //int receivedData;
+  
 
-//initialize the LCD 
-  lcd.begin(16,2); // if we're still using a 16x2 LCD screen
+    //initialize the LCD 
   CurrentReadings readings; //use struct to receive current readings
   const int numSamples = 10; // Adjust based on sampling rate
     
@@ -207,13 +216,13 @@ void Disp_LCD(void * parameters) {
               conts double* voltageSamples = nullptr;
               double sumOfSquares = 0;
 
-              for (int i = 0; i < numSamples; i++) {
-              double voltage = 0;
-              switch (phase) {
-                case 0: voltageSamples = readings.Value_0; break;
-                case 1: voltageSamples = readings.Value_1; break;
-                case 2: voltageSamples = readings.Value_2; break;
-              }
+              // for (int i = 0; i < numSamples; i++) {
+              // double voltage = 0;
+              // switch (phase) {
+              //   case 0: voltageSamples = readings.Value_0; break;
+              //   case 1: voltageSamples = readings.Value_1; break;
+              //   case 2: voltageSamples = readings.Value_2; break;
+              // }
               
               rmsVoltages[phase] = calculateRMS(voltageSample, numSamples);
               rmsCurrent[phase] = rmsVoltages[phase] / mVperAmp;    //Calculate RMS current
@@ -233,8 +242,8 @@ void Disp_LCD(void * parameters) {
             // lcd.print("RMS Current:")
             // lcd.setCursor(0,1);
             // lcd.print(receivedData); // TBA for data format
-            Serial.print("Task2: Received data: ");
-            Serial.println(receivedData);
+            // Serial.print("Task2: Received data: ");
+            // Serial.println(receivedData);
             
     }
 
@@ -246,10 +255,10 @@ void Disp_LCD(void * parameters) {
 
 
 struct Current_Readings {
-  int Value_0;
-  int Value_1;
-  int Value_2;
-  int Value_3;
+  double Value_0;
+  double Value_1;
+  double Value_2;
+  double Value_3;
 };
 
 struct Min_Max {
