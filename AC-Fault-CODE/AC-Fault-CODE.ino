@@ -10,8 +10,9 @@
 #include <Arduino_FreeRTOS.h>
 #include <LibPrintf.h>
 #include <ArduinoJson.h>
-//#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h> // I2C LCD
 #include <queue.h>
+#include <Wire.h> // I2C communication
 
 //Define Queue
 #define QUEUE_LENGTH 9
@@ -55,7 +56,11 @@ constexpr uint8_t Analog0 = PIN_A0; // connection for the Neutral line
 constexpr uint8_t Analog1 = PIN_A1; // connection for the A phase.
 constexpr uint8_t Analog2 = PIN_A2; // connection for the B phase.
 constexpr uint8_t Analog3 = PIN_A3; // connection for the C phase. 
-
+// I2C LCD Configuration
+constexpr uint8_t LCD_COLS = 16;
+constexpr uint8_t LCD_ROWS = 2;
+constexpr uint8_t LCD_ADDR = 0x27; // I2C address
+LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 
 // Two blink tasks (forward declarations)
 void TaskBlinkRed( void *pvParameters );
@@ -112,9 +117,11 @@ void setup() {
   pinMode(Analog1, INPUT); 
   pinMode(Analog2, INPUT); 
   pinMode(Analog3, INPUT);
-  pinMode(Button_Loc,INPUT);
-  pinMode(Relays,OUTPUT);
   delay(1000);
+    
+    Wire.begin(19, 18); // SCL-pin 19 SDA-pin 18
+    lcd.init();
+    lcd.backlight();
 
   printf("Begin");
   //Fill out the Structs
@@ -170,17 +177,73 @@ void Buzzer(void * parameters) {
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
+LiquidCrysral lcd();// TBD // include LiquidCrysral lib
+double rmsVoltages[3]; // Array to store RMS voltages for phases 1, 2, 3
+double rmsCurrent[3]; // Array to store RMS current for phases 1, 2, 3
+
+// Function to calculate RMS values for a given phase
+double calculateRMS(const double* voltageSamples, double& rmsVoltage, int numSamples) {
+    double sumOfSquares = 0.0;
+    for (int i = 0; i < numSamples; i++) {
+      sumOfSquares += voltageSamples[i] * voltageSamples[i];
+    }
+    double meanOfSquares = sumOfSquares / numSamples;
+    return sqrt(meanOfSquares);
+    
+  //store an ary of voltage samples
+// struct CurrentReadings  {
+//     double value_0[10];
+//     double value_2[10];
+//     double value_3[10];
+  }; 
+    
+}
 
 void Disp_LCD(void * parameters) {
+    // update the display to use the i2c protocol. the pins on the arduino are scl: 19 and sda: 18. 
   printf("This is task: %s\n", pcTaskGetName(NULL));
-  int receivedData;
+  
 
+    //initialize the LCD 
+  CurrentReadings readings; //use struct to receive current readings
+  const int numSamples = 10; // Adjust based on sampling rate
+    
   for (;;) {
     
-    if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY) == pdPASS) { //If the Measurements are received then display them to the LCD.
+    if (xQueueReceive(dataQueue, &readings, portMAX_DELAY) == pdPASS) { //If the Measurements are received then display them to the LCD.
             // Process received data (e.g., print to Serial)
-            Serial.print("Task2: Received data: ");
-            Serial.println(receivedData);
+        for (int phase = 0; phase < 3; phase++) {
+              conts double* voltageSamples = nullptr;
+              double sumOfSquares = 0;
+
+              // for (int i = 0; i < numSamples; i++) {
+              // double voltage = 0;
+              // switch (phase) {
+              //   case 0: voltageSamples = readings.Value_0; break;
+              //   case 1: voltageSamples = readings.Value_1; break;
+              //   case 2: voltageSamples = readings.Value_2; break;
+              // }
+              
+              rmsVoltages[phase] = calculateRMS(voltageSample, numSamples);
+              rmsCurrent[phase] = rmsVoltages[phase] / mVperAmp;    //Calculate RMS current
+
+            }
+            // Display RMS Current for each phase on the LCD
+              lcd.clear();
+              for (int phase = 0; phase < 3; phase++) {
+                lcd.setCursor(0, phase); // Set cursor position
+                lcd.print("P");
+                lcd.print(phase + 1);
+                lcd.print(": ");
+                lcd.print(rmsCurrent[phase], 2); // Display with 2 decimal places
+                lcd.print("A"); 
+              }
+            // lcd.setCursor(0,0);
+            // lcd.print("RMS Current:")
+            // lcd.setCursor(0,1);
+            // lcd.print(receivedData); // TBA for data format
+            // Serial.print("Task2: Received data: ");
+            // Serial.println(receivedData);
             
     }
 
@@ -192,10 +255,10 @@ void Disp_LCD(void * parameters) {
 
 
 struct Current_Readings {
-  int Value_0;
-  int Value_1;
-  int Value_2;
-  int Value_3;
+  double Value_0;
+  double Value_1;
+  double Value_2;
+  double Value_3;
 };
 
 struct Min_Max {
@@ -262,42 +325,32 @@ void Tog_Relys(void * parameters) {
   printf("This is task: %s\n", pcTaskGetName(NULL));
 
   for (;;) {
-    
+    if (fault_current > pickup_current)
+      // open the relays to disconnect the faulty line
+      digitalWrite(Relays, HIGH) // assuming HIGH means relay is open
+      Serial.println("Fault detected! relays opened");
+    } else {
+      // close the relays if no fault
+      digitalWrite(Relays, LOW); // assuming LOW means relay is closed
+      Serial.println("No fault. Relays closed.")
+
+  }
     vTaskDelay(500/ portTICK_PERIOD_MS);
   }
 }
 
-void Button_Pr(void *parameters) {
-  /*Detect press of button*/
+void Button_Pr(void * parameters) {
   printf("This is task: %s\n", pcTaskGetName(NULL));
-  uint8_t buttonPin = *((uint8_t *)parameters);
-  
-  int lastButtonState =0;
-  int Button_Position = 0;
-  int debounceDelay = 50;
-  int lastDebounceTime =50;
+
   for (;;) {
-        // Read the state of the switch into a local variable
-    int buttonState = digitalRead(buttonPin);
+     //read button state
+    int buttonState = digitalRead(Button_Loc);
 
-    // Check if the state of the switch has changed
-    if (buttonState != lastButtonState) {
-      // Reset the debounce timer
-      lastDebounceTime = millis();
+    if (buttonState == HIGH) {
+      //perform actions based on button press e.g, reset the system, acknowledge alarms or change settings
+      Serial.println("Button pressed! Performing action.")
+      // add the button press handling code here
     }
-
-    // Check if enough time has passed to consider it stable
-    if ((millis() - lastDebounceTime) > debounceDelay) {
-      // Update the last button state
-      lastButtonState = buttonState;
-
-      // Release the semaphore to indicate debounced state
-      //xSemaphoreTake(debounceSemaphore);
-    }
-
-    // Delay to avoid high CPU usage
-    //vTaskDelay(pdMS_TO_TICKS(10)); // Delay for 10 milliseconds
-  
     vTaskDelay( 500 / portTICK_PERIOD_MS);
   }
 }
