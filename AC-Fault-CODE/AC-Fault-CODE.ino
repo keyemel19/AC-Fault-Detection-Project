@@ -267,12 +267,15 @@ void Tog_Relys(void * parameters) {
   }
 }
 
-void Button_Pr(void * parameters) {
+void Button_Pr(void *parameters) {
   /*Detect press of button*/
   printf("This is task: %s\n", pcTaskGetName(NULL));
-  int8_t *buttonPin = *parameters
-
+  uint8_t buttonPin = *((uint8_t *)parameters);
+  
+  int lastButtonState =0;
   int Button_Position = 0;
+  int debounceDelay = 50;
+  int lastDebounceTime =50;
   for (;;) {
         // Read the state of the switch into a local variable
     int buttonState = digitalRead(buttonPin);
@@ -289,7 +292,7 @@ void Button_Pr(void * parameters) {
       lastButtonState = buttonState;
 
       // Release the semaphore to indicate debounced state
-      xSemaphoreGive(debounceSemaphore);
+      //xSemaphoreTake(debounceSemaphore);
     }
 
     // Delay to avoid high CPU usage
