@@ -8,12 +8,16 @@
 //Test to commit to GIT
 
 #include <Arduino_FreeRTOS.h>
-//#include <LibPrintf.h>
+#include <LibPrintf.h>
 //#include <ArduinoJson.h>
 //#include <LCD.h>
 #include <LiquidCrystal_I2C.h> // I2C LCD
 #include <queue.h>
-//#include <Wire.h> // I2C communication
+#include <Wire.h> // I2C communication
+#include <Arduino.h>
+//#include <freertos/FreeRTOS.h>
+//#include <freertos/task.h>
+//#include "esp_heap_caps.h"
 
 //Define Queue
 #define QUEUE_LENGTH 9
@@ -121,72 +125,7 @@ struct Min_Max {
 };
 
 
-// SETUP
-void setup() {
-  Serial.begin(9600); //Begin the Serial Terminal
-  //printf("Setup started with portTICK_PERIOD_MS:%d\n", portTICK_PERIOD_MS);
 
-  // GPIO pins for LEDs. Specifies if each pin is an input or and output 
-  // pinMode(redLED, OUTPUT);
-  // pinMode(grnLED, OUTPUT);
-  // pinMode(Buzzer_Pin, OUTPUT); 
-  //pinMode(LCD_1, OUTPUT); //TBD
-  //pinMode(LCD_2, OUTPUT); //TBD
-  // pinMode(Micro_Trans, OUTPUT); 
-  // pinMode(Micro_Rec, INPUT); 
-  // pinMode(Analog0, INPUT); 
-  // pinMode(Analog1, INPUT); 
-  // pinMode(Analog2, INPUT); 
-  // pinMode(Analog3, INPUT);
-  
-  lcd.init();
-  lcd.backlight(); 
-  lcd.begin(2, 16); // SCL-pin 19 SDA-pin 18
-  
-
-  printf("Begin");
-  //Fill out the Structs
-  LCD_Pin_Struct LCD = {LCD_1,LCD_2,&LCD_1,&LCD_2};
-  Analog_Pins Current = {Analog0,Analog1,Analog2,Analog3};
-  Micro_Communication COM = {Micro_Trans, Micro_Rec};
-
-  //Create the Queue to send the Measurements on.
-  dataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);
-    //if (dataQueue == NULL) {
-        //Serial.println("Failed to create queue!");
-        //while (1);
-    //}
-  lcd.setCursor (0, 0);
-  lcd.print("AC TRANSMISSION");
-  lcd.setCursor (0, 1);
-  lcd.print("      LINE     ");
-  
-  //vTaskDelay(1000);
-  delay(1000);
-  lcd.clear();
-  
-  lcd.print("FAULT DECTECTION");
-  lcd.setCursor (0, 1);
-  lcd.print("     SYSTEM"); 
-  delay(1000);
-  lcd.clear();
-  // Stack Sizes can be optimized once functionality is proven.
-  // Now set up two tasks to run independently.
-  //         (Func_name,  User_name, Stk,          Parameters,  Priority,          Handler); //xTaskCreate(,,,,,)
-  // xTaskCreate(TaskBlink, "BlinkGrn", 256,    (void *) &grnLED,         2,         &grnTask); //Task to Blink LED
-  // xTaskCreate(TaskBlink, "BlinkRed", 200,    (void *) &redLED,         1,         &redTask); //Task to Blink LED
-  // //xTaskCreate(   myLoop,     "Loop", 256,                NULL,         2,             NULL); //Task to Maintain the RTOS Loop
-  // xTaskCreate(   Buzzer, "Tog_Buzz", 256,(void *) &Buzzer_Pin,         1, &Activate_Buzzer); //Task to Toggle the Buzzer
-  // xTaskCreate( Disp_LCD, "Dis_Info", 512,       (void *) &LCD,         1,     &DisplayData); //Task to Display information to the LCD Screen
-  // xTaskCreate( I_Reader, "Read_Cur", 256,   (void *) &Current,         1,     &ReadCurrent); //Task to get the readings of the current
-  // xTaskCreate(Tog_Relys, "Tog_Rlys",  64,    (void *) &Relays,         1,    &Relay_Switch); //Task to toggle the relays //We may need to implement a Semiphore for the Relay,Button,& Buzzer Functions.
-  // xTaskCreate(Button_Pr,"Get_Press",  16,(void *) &Button_Loc,         2,    &Button_Press); //Task to get Button Press.  
-  //create communication protocol for arduino to other board. 
-  
-  //StartUpMessage()      //This may not work with RTOS.        
-  printf("Setup completed\n");
-  //vTaskStartScheduler();
-}
 
 // void StartUpMessage(){
 //   lcd.print("AC TRANSMISSION");
@@ -225,9 +164,9 @@ void Buzzer(void * parameters) { // This uses PWM to ramp up and down pins 3,5,6
 
       noTone(buzzerPin); // Stop the buzzer after the siren sound
       delay(1000); // Delay between siren cycles
-      }
+    }
 
-      vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
 
@@ -249,20 +188,25 @@ void Disp_Current_and_Voltage(char string[],float voltage, float current ){
   lcd.setCursor(0, 1); // Set cursor position to the top
   lcd.print("VRMS ");
   lcd.print(voltage);
-  vTaskDelay(500);
+  
+  unsigned long startTime = millis(); // Get the current time
+  while (millis() - startTime < 1000) {} // Wait in a loop until the desired delay period has elapsed
+
+  lcd.setCursor(0, 1); // Set cursor position to the top
   lcd.print("ARMS ");
   lcd.print(current);
-  vTaskDelay(500);
+
+  startTime = millis(); // Get the current time
+  while (millis() - startTime < 1000) {} // Wait in a loop until the desired delay period has elapsed
 }
 
-void Disp_LCD(void * parameters) {
-  // update the display to use the i2c protocol. the pins on the arduino are scl: 19 and sda: 18. 
+void Disp_LCD(void * parameters) { 
   printf("This is task: %s\n", pcTaskGetName(NULL));
-
-  Current_Readings readings; //use struct to receive current readings
-    
+  Current_Readings readings;
   for (;;) {
-    
+    //lcd.clear();
+    //vTaskDelay(pdMS_TO_TICKS(500));
+    //lcd.print("CALLED");
     if (xQueueReceive(dataQueue, &readings, portMAX_DELAY) == pdPASS) { //If the Measurements are received then display them to the LCD.
       
       /* struct Current_Readings { //This is currently in the readings pointer
@@ -282,10 +226,10 @@ void Disp_LCD(void * parameters) {
       Disp_Current_and_Voltage("NEUTRAL"    ,readings.Value_0,readings.Current_0);
                  
     }
-
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
+
 
 //int Measurement_Calaculations {}
 
@@ -294,7 +238,7 @@ void Disp_LCD(void * parameters) {
 
 void I_Reader(void *parameters) {
   struct Analog_Pins *data = (struct Analog_Pins *)parameters;
-    
+  printf("This is task: %s\n", pcTaskGetName(NULL));
 
   for (;;) {
     uint32_t start_time = millis();
@@ -329,8 +273,7 @@ void I_Reader(void *parameters) {
     if (xQueueSend(dataQueue, &Measurements, portMAX_DELAY) != pdPASS) {
       Serial.println("Failed to send data to queue!");
     }
-
-    vTaskDelay(500 / portTICK_PERIOD_MS); // Delay for 500 ms
+    vTaskDelay(pdMS_TO_TICKS(500)); // Delay for 500 ms
   }
 }
 
@@ -364,7 +307,7 @@ void Tog_Relys(void * parameters) {
       Serial.println("No fault. Relays closed.");
 
   }
-    vTaskDelay(500/ portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(500));
   }
 }
 
@@ -397,6 +340,74 @@ void TaskBlink(void * parameters) {
     digitalWrite(ledPin, !digitalRead(ledPin));
     vTaskDelay((ledPin == 4 ? 200 : 500) / portTICK_PERIOD_MS);
   }
+}
+
+// SETUP
+void setup() {
+  Serial.begin(9600); //Begin the Serial Terminal
+  printf("Setup started with portTICK_PERIOD_MS:%d\n", portTICK_PERIOD_MS);
+
+  // GPIO pins for LEDs. Specifies if each pin is an input or and output 
+  pinMode(redLED, OUTPUT);
+  pinMode(grnLED, OUTPUT);
+  pinMode(Buzzer_Pin, OUTPUT); 
+  pinMode(Relays, OUTPUT); 
+  //pinMode(LCD_1, OUTPUT); //TBD
+  //pinMode(LCD_2, OUTPUT); //TBD
+  pinMode(Micro_Trans, OUTPUT); 
+  pinMode(Micro_Rec, INPUT); 
+  pinMode(Analog0, INPUT); 
+  pinMode(Analog1, INPUT); 
+  pinMode(Analog2, INPUT); 
+  pinMode(Analog3, INPUT);
+  
+  lcd.init();
+  lcd.backlight(); 
+  lcd.begin(2, 16); // SCL-pin 19 SDA-pin 18
+  
+
+  printf("Begin\n");
+  //Fill out the Structs
+  //LCD_Pin_Struct LCD = {LCD_1,LCD_2,&LCD_1,&LCD_2};
+  Analog_Pins Pins_A = {Analog0,Analog1,Analog2,Analog3};
+  Micro_Communication COM = {Micro_Trans, Micro_Rec};
+
+  //Create the Queue to send the Measurements on.
+  dataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);
+    if (dataQueue == NULL) {
+        Serial.println("Failed to create queue!");
+        //while (1);
+    }
+
+
+  lcd.setCursor (0, 0);
+  lcd.print("AC TRANSMISSION");
+  lcd.setCursor (0, 1);
+  lcd.print("      LINE     ");
+  unsigned long startTime = millis(); // Get the current time
+    // Wait in a loop until the desired delay period has elapsed
+  while (millis() - startTime < 1000) {}  // wait for 1 second. This has to be done like this because delay cannot be used. and the scheduler has not been initialized.
+  lcd.clear();
+  lcd.print("FAULT DETECTION");
+  lcd.setCursor (0, 1);
+  lcd.print("     SYSTEM"); 
+
+  // Stack Sizes can be optimized once functionality is proven.
+  // Now set up two tasks to run independently.
+  //         (Func_name,  User_name, Stk,          Parameters,  Priority,          Handler); //xTaskCreate(,,,,,)
+  //xTaskCreate(TaskBlink, "BlinkGrn", 70,    (void *) &grnLED,         2,         &grnTask); //Task to Blink LED
+  //xTaskCreate(TaskBlink, "BlinkRed", 64,    (void *) &redLED,         1,         &redTask); //Task to Blink LED
+  //xTaskCreate(   myLoop,     "Loop", 256,                NULL,         2,             NULL); //Task to Maintain the RTOS Loop
+  //xTaskCreate(   Buzzer, "Tog_Buzz", 64,(void *) &Buzzer_Pin,         1,  &Activate_Buzzer); //Task to Toggle the Buzzer
+  xTaskCreate( Disp_LCD, "Dis_Info", 128,       NULL,         1,     NULL); //Task to Display information to the LCD Screen
+  xTaskCreate( I_Reader, "Read_Cur", 128,   (void *) &Pins_A,         2,     &ReadCurrent); //Task to get the readings of the current
+  //xTaskCreate(Tog_Relys, "Tog_Rlys",  256,    (void *) &Relays,     2,    &Relay_Switch); //Task to toggle the relays //We may need to implement a Semiphore for the Relay,Button,& Buzzer Functions.
+  //xTaskCreate(Button_Pr,"Get_Press",  16,(void *) &Button_Loc,         2,    &Button_Press); //Task to get Button Press.  
+  //create communication protocol for arduino to other board. 
+  //printf(uxTaskGetStackHighWaterMark(NULL));
+  //StartUpMessage()      //This may not work with RTOS.        
+  printf("Setup completed\n");
+  vTaskStartScheduler();
 }
 
 // Now used as part of the idle task - don't use! Whenever I tried
