@@ -9,26 +9,14 @@
 
 #include <Arduino_FreeRTOS.h>
 #include <LibPrintf.h>
-//#include <ArduinoJson.h>
-//#include <LCD.h>
 #include <LiquidCrystal_I2C.h> // I2C LCD
 #include <queue.h>
 #include <Wire.h> // I2C communication
 #include <Arduino.h>
-//#include <freertos/FreeRTOS.h>
-//#include <freertos/task.h>
-//#include "esp_heap_caps.h"
 
-//Define Queue
-#define QUEUE_LENGTH 9
-#define QUEUE_ITEM_SIZE sizeof(int)
 
-QueueHandle_t dataQueue;
 
-constexpr uint8_t LCD_COLS = 16;
-constexpr uint8_t LCD_ROWS = 2;
-constexpr uint8_t LCD_ADDR = 0x27; // I2C address
-LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
+LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address (address,Column,row)
 //Values used in Calculations // These values would be better in a Queue.
 int mVperAmp = 100;
 float I1 = 0.00;
@@ -119,25 +107,13 @@ struct Current_Readings {
   float Current_3;
 };
 
+//Define Queue
+QueueHandle_t structQueue;
+
 struct Min_Max {
   int min;
   int max; 
 };
-
-
-
-
-// void StartUpMessage(){
-//   lcd.print("AC TRANSMISSION");
-//   lcd.setCursor (0, 1);
-//   lcd.print("      LINE     ");
-//   delay(1000);
-//   lcd.clear();
-//   lcd.print("FAULT DECTECTION");
-//   lcd.setCursor (0, 1);
-//   lcd.print("     SYSTEM"); 
-//   delay(1000);
-// }
 
 
 //Task Definitions
@@ -186,47 +162,47 @@ void Disp_Current_and_Voltage(char string[],float voltage, float current ){
   lcd.setCursor(0, 0); // Set cursor position to the top
   lcd.print(string);
   lcd.setCursor(0, 1); // Set cursor position to the top
-  lcd.print("VRMS ");
+  lcd.print("V: ");
   lcd.print(voltage);
+  lcd.print(" A: ");
+  lcd.print(current);
   
   unsigned long startTime = millis(); // Get the current time
   while (millis() - startTime < 1000) {} // Wait in a loop until the desired delay period has elapsed
-
-  lcd.setCursor(0, 1); // Set cursor position to the top
-  lcd.print("ARMS ");
-  lcd.print(current);
-
-  startTime = millis(); // Get the current time
-  while (millis() - startTime < 1000) {} // Wait in a loop until the desired delay period has elapsed
+  //vTaskDelay(500); //This will cause a feedback loop to the Disp function locking the system
 }
 
 void Disp_LCD(void * parameters) { 
   printf("This is task: %s\n", pcTaskGetName(NULL));
-  Current_Readings readings;
+  struct Current_Readings readings = {0, 0, 0, 0, 0, 0, 0, 0};
   for (;;) {
     //lcd.clear();
     //vTaskDelay(pdMS_TO_TICKS(500));
     //lcd.print("CALLED");
-    if (xQueueReceive(dataQueue, &readings, portMAX_DELAY) == pdPASS) { //If the Measurements are received then display them to the LCD.
+    if (xQueueReceive(structQueue, &readings, portMAX_DELAY) == pdPASS) { //If the Measurements are received then display them to the LCD.
       
       /* struct Current_Readings { //This is currently in the readings pointer
-        double Value_0; //This should be RMS voltage for neutral
-        double Value_1; //Phase 1
-        double Value_2; //Phase 2
-        double Value_3; //Phase 3
+        float Value_0; //This should be RMS voltage for neutral
+        float Value_1; //Phase 1
+        float Value_2; //Phase 2
+        float Value_3; //Phase 3
         float Current_0;//Neutral
         float Current_1;//Phase 1
         float Current_2;//Phase 2
         float Current_3;//Phase 3
         };
       */
+      printf("got");
       Disp_Current_and_Voltage("RED Line"   ,readings.Value_1,readings.Current_1);
       Disp_Current_and_Voltage("BLUE Line"  ,readings.Value_2,readings.Current_2);
       Disp_Current_and_Voltage("YELLOW Line",readings.Value_3,readings.Current_3);
       Disp_Current_and_Voltage("NEUTRAL"    ,readings.Value_0,readings.Current_0);
                  
     }
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    
+    lcd.clear();
+    vTaskDelay(500);
+    
   }
 }
 
@@ -242,7 +218,7 @@ void I_Reader(void *parameters) {
 
   for (;;) {
     uint32_t start_time = millis();
-    struct Current_Readings Measurements = {0, 0, 0, 0}; // Initialize readings
+    struct Current_Readings Measurements = {0, 0, 0, 0, 0, 0, 0, 0}; // Initialize readings
     struct Min_Max Extrema_0 = {0,1024}; //Initialize Minimum and maximum values
     struct Min_Max Extrema_1 = {0,1024};
     struct Min_Max Extrema_2 = {0,1024};
@@ -254,26 +230,42 @@ void I_Reader(void *parameters) {
       Measurements.Value_1 = analogRead(data->Pin_Analog_1);
       Measurements.Value_2 = analogRead(data->Pin_Analog_2);
       Measurements.Value_3 = analogRead(data->Pin_Analog_3);
-
+      
       Sample_data(Measurements.Value_0,Extrema_0); //Find the minimum and maximum values
       Sample_data(Measurements.Value_1,Extrema_1);
       Sample_data(Measurements.Value_2,Extrema_2);
       Sample_data(Measurements.Value_3,Extrema_3);
     }
-      Measurements.Value_0 = (((Extrema_0.max - Extrema_0.min) * 5.0)/1024.0)/2.0 *0.707; //RMS voltage calculations
-      Measurements.Value_1 = (((Extrema_1.max - Extrema_1.min) * 5.0)/1024.0)/2.0 *0.707;
-      Measurements.Value_2 = (((Extrema_2.max - Extrema_2.min) * 5.0)/1024.0)/2.0 *0.707;
-      Measurements.Value_3 = (((Extrema_3.max - Extrema_3.min) * 5.0)/1024.0)/2.0 *0.707;
+    Measurements.Value_0 = (((Extrema_0.max - Extrema_0.min) * 5.0)/1024.0)/2.0 *0.707; //RMS voltage calculations
+    Measurements.Value_1 = (((Extrema_1.max - Extrema_1.min) * 5.0)/1024.0)/2.0 *0.707;
+    Measurements.Value_2 = (((Extrema_2.max - Extrema_2.min) * 5.0)/1024.0)/2.0 *0.707;
+    Measurements.Value_3 = (((Extrema_3.max - Extrema_3.min) * 5.0)/1024.0)/2.0 *0.707;
+    
+    Serial.println(Measurements.Value_0);
+    Serial.println(Measurements.Value_1);
+    Serial.println(Measurements.Value_2);
+    Serial.println(Measurements.Value_3);
 
-      Measurements.Current_0 = Measurements.Value_0 *1000/100;
-      Measurements.Current_1 = Measurements.Value_1 *1000/100;
-      Measurements.Current_2 = Measurements.Value_2 *1000/100;
-      Measurements.Current_3 = Measurements.Value_3 *1000/100;
+
+
+    Measurements.Current_0 = Measurements.Value_0 *1000/100;
+    Measurements.Current_1 = Measurements.Value_1 *1000/100;
+    Measurements.Current_2 = Measurements.Value_2 *1000/100;
+    Measurements.Current_3 = Measurements.Value_3 *1000/100;
+
+
+    Serial.println(Measurements.Current_0);
+    Serial.println(Measurements.Current_1);
+    Serial.println(Measurements.Current_2);
+    Serial.println(Measurements.Current_3);
     // Send measurements to the queue
-    if (xQueueSend(dataQueue, &Measurements, portMAX_DELAY) != pdPASS) {
-      Serial.println("Failed to send data to queue!");
-    }
-    vTaskDelay(pdMS_TO_TICKS(500)); // Delay for 500 ms
+    //printf(Measurements.Current_0);
+    xQueueSend(structQueue, &Measurements, portMAX_DELAY);
+    // if (xQueueSend(dataQueue, &Measurements, portMAX_DELAY) != pdPASS) {
+    //   Serial.println("Failed to send data to queue!");
+    // }
+    vTaskDelay(500); // Delay for 500 ms //this seems to crash the task
+    printf("Complete-V\n");
   }
 }
 
@@ -352,8 +344,6 @@ void setup() {
   pinMode(grnLED, OUTPUT);
   pinMode(Buzzer_Pin, OUTPUT); 
   pinMode(Relays, OUTPUT); 
-  //pinMode(LCD_1, OUTPUT); //TBD
-  //pinMode(LCD_2, OUTPUT); //TBD
   pinMode(Micro_Trans, OUTPUT); 
   pinMode(Micro_Rec, INPUT); 
   pinMode(Analog0, INPUT); 
@@ -367,14 +357,15 @@ void setup() {
   
 
   printf("Begin\n");
+
   //Fill out the Structs
-  //LCD_Pin_Struct LCD = {LCD_1,LCD_2,&LCD_1,&LCD_2};
   Analog_Pins Pins_A = {Analog0,Analog1,Analog2,Analog3};
   Micro_Communication COM = {Micro_Trans, Micro_Rec};
 
   //Create the Queue to send the Measurements on.
-  dataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);
-    if (dataQueue == NULL) {
+  // I2C address
+  structQueue = xQueueCreate(2, sizeof(struct Current_Readings));
+    if (structQueue == NULL) {
         Serial.println("Failed to create queue!");
         //while (1);
     }
@@ -395,11 +386,11 @@ void setup() {
   // Stack Sizes can be optimized once functionality is proven.
   // Now set up two tasks to run independently.
   //         (Func_name,  User_name, Stk,          Parameters,  Priority,          Handler); //xTaskCreate(,,,,,)
-  //xTaskCreate(TaskBlink, "BlinkGrn", 70,    (void *) &grnLED,         2,         &grnTask); //Task to Blink LED
+  //xTaskCreate(TaskBlink, "BlinkGrn", 128,    (void *) &grnLED,         2,         &grnTask); //Task to Blink LED
   //xTaskCreate(TaskBlink, "BlinkRed", 64,    (void *) &redLED,         1,         &redTask); //Task to Blink LED
   //xTaskCreate(   myLoop,     "Loop", 256,                NULL,         2,             NULL); //Task to Maintain the RTOS Loop
   //xTaskCreate(   Buzzer, "Tog_Buzz", 64,(void *) &Buzzer_Pin,         1,  &Activate_Buzzer); //Task to Toggle the Buzzer
-  xTaskCreate( Disp_LCD, "Dis_Info", 128,       NULL,         1,     NULL); //Task to Display information to the LCD Screen
+  xTaskCreate( Disp_LCD, "Dis_Info", 128,       NULL,         2,     NULL); //Task to Display information to the LCD Screen
   xTaskCreate( I_Reader, "Read_Cur", 128,   (void *) &Pins_A,         2,     &ReadCurrent); //Task to get the readings of the current
   //xTaskCreate(Tog_Relys, "Tog_Rlys",  256,    (void *) &Relays,     2,    &Relay_Switch); //Task to toggle the relays //We may need to implement a Semiphore for the Relay,Button,& Buzzer Functions.
   //xTaskCreate(Button_Pr,"Get_Press",  16,(void *) &Button_Loc,         2,    &Button_Press); //Task to get Button Press.  
@@ -415,20 +406,20 @@ void setup() {
 // if I introduced any kind of delay() or vTaskDelay().
 // Whatever the cause, I recommend avoid using the loop;
 void loop() {
-  // static unsigned long lastMillis = 0;
-  // static unsigned long myCount = 0;
+  static unsigned long lastMillis = 0;
+  static unsigned long myCount = 0;
 
-  // if (millis() - lastMillis > 750) {
-  //   printf("std Loop: %lu\n", myCount++);
-  //   lastMillis = millis();
-  // }
+  if (millis() - lastMillis > 750) {
+   printf("std Loop: %lu\n", myCount++);
+   lastMillis = millis();
+  }
 }
 
 // Replacement loop under my control
-// void myLoop() {
-//   static unsigned long myCount = 0;
-//   for (;;) {
-//     printf("myLoop: %lu\n", myCount++);
-//     vTaskDelay(2000 / portTICK_PERIOD_MS);
-//   }
-// }
+void myLoop() {
+  static unsigned long myCount = 0;
+  for (;;) {
+   printf("myLoop: %lu\n", myCount++);
+   vTaskDelay(2000 / portTICK_PERIOD_MS);
+  }
+}
