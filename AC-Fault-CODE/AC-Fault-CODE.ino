@@ -23,7 +23,7 @@ SemaphoreHandle_t WriteSemaphore;
 // The GPIO pins for the devices
 constexpr uint8_t Buzzer_Pin = 11; // Pin for the buzzer
 constexpr uint8_t Relays = 7; //Connection point for all the relays
-constexpr uint8_t Button_Loc = 1; //Connection point for all the relays
+constexpr uint8_t Button_Loc = 2; //Connection point for all the relays
 constexpr uint8_t Micro_Trans = 6; //Transmit pin for the ESP
 constexpr uint8_t Micro_Rec = 5; //Receive pin from the ESP
 constexpr uint8_t Analog0 = PIN_A0; // connection for the Neutral line
@@ -44,6 +44,7 @@ TaskHandle_t ReadCurrent;
 TaskHandle_t Activate_Buzzer; 
 TaskHandle_t SPI_Communication; 
 TaskHandle_t Button_Press; 
+TaskHandle_t TaskREADER; //Used
 
 struct Micro_Communication{
    int Transmit;
@@ -112,9 +113,10 @@ void setup() {
 
   // Stack Sizes can be optimized once functionality is proven.
   //         (Func_name,  User_name, Stk,          Parameters,  Priority,          Handler);
-  xTaskCreate(  taskISR, "Task_ISR",  50,    NULL,         2,      NULL);
-  xTaskCreate( Disp_LCD, "Dis_Info", 110,    NULL,         1,      NULL); //Task to Display information to the LCD Screen
-  xTaskCreate( I_Reader, "Read_Cur", 150,    NULL,         0,      NULL); //Task to get the readings of the current
+  xTaskCreate( Disp_LCD, "Dis_Info", 140,    NULL,         2,      NULL); //Task to Display information to the LCD Screen
+  xTaskCreate( I_Reader, "Read_Cur", 180,    NULL,         1,      &TaskREADER); //Task to get the readings of the current
+  //xTaskCreate(  taskISR, "Task_ISR",  80,    NULL,         0,      NULL);
+
   Serial.print("Tasks Initialized\n");
 
   //xSemaphoreGive(InterruptSemaphore);
@@ -146,7 +148,7 @@ void Disp_LCD(void * parameters) {
   // }
   for (;;) {
     Serial.print("Start-P\n");
-    if (xQueueReceive(structQueue, &readings, (TickType_t) 1000 ) == pdPASS) { //If the Measurements are received then display them to the LCD.
+    if (xQueueReceive(structQueue, &readings, (TickType_t) 10 ) == pdPASS) { //If the Measurements are received then display them to the LCD.
 
       //Serial.print("got");
       Disp_Current_and_Voltage("RED Line"   ,readings.Value_1,readings.Current_1);
@@ -155,7 +157,7 @@ void Disp_LCD(void * parameters) {
       Disp_Current_and_Voltage("NEUTRAL"    ,readings.Value_0,readings.Current_0);
       lcd.clear();         
     }
-    if (xQueueReceive(faultQueue, &Fault_Desc, (TickType_t) 1000 ) == pdPASS) { //If the Measurements are received then display them to the LCD.
+    if (xQueueReceive(faultQueue, &Fault_Desc, (TickType_t) 10 ) == pdPASS) { //If the Measurements are received then display them to the LCD.
 
       lcd.clear();
       lcd.setCursor(0, 0); // Set cursor position to the top
@@ -165,7 +167,7 @@ void Disp_LCD(void * parameters) {
     }
     
     Serial.print("Complete-P\n");
-    vTaskDelay(1000);
+    vTaskDelay(10);
   }
 }
 
@@ -216,49 +218,39 @@ void I_Reader(void *parameters) {
     Serial.println(Measurements.Current_3);
     //vTaskDelay(1200);
     // Send measurements to the queue
-    Fault_Case = 0;//Fault_Check(Measurements.Current_1,Measurements.Current_2,Measurements.Current_3,Measurements.Current_0);
+    Fault_Case = 0; //Fault_Check(Measurements.Current_1,Measurements.Current_2,Measurements.Current_3,Measurements.Current_0);
     if (Fault_Case) {
       switch (Fault_Case) {
-        case 0:
-            strcpy(Fault_Type,"NO FAULT");
-            break;
         case 1:
-            strcpy(Fault_Type,"RED YELLOW");
-            xSemaphoreGive(InterruptSemaphore); //Gives priority of the Semaphore
+            strcpy(Fault_Type,"RED YELLOW");//Gives priority of the Semaphore
             break;
         case 2:
             strcpy(Fault_Type,"YELLOW BLUE");
-            xSemaphoreGive(InterruptSemaphore);
             break;
         case 3:
             strcpy(Fault_Type,"BLUE RED");
-            xSemaphoreGive(InterruptSemaphore);
             break;
         case 4:
             strcpy(Fault_Type,"Three Phase");
-            xSemaphoreGive(InterruptSemaphore);
             break;
         case 5:
             strcpy(Fault_Type,"Double line Grd");
-            xSemaphoreGive(InterruptSemaphore);
             break;
         case 6:
             strcpy(Fault_Type,"Line to Line");
-            xSemaphoreGive(InterruptSemaphore);
             break;
         default:
             strcpy(Fault_Type,"ERROR"); //This should never occur
             break;
+      }
+      // if (uxQueueSpacesAvailable(faultQueue) > 0) {
+      // xQueueSend(faultQueue, &Measurements, portMAX_DELAY);//queue is of length one. It will never hold more then one set of information
+      // } 
+      // else {
+      //   Serial.print("faultQueue is full\n");
+      //     // Handle queue full condition
+      // }
       
-      }
-      if (uxQueueSpacesAvailable(faultQueue) > 0) {
-      xQueueSend(faultQueue, &Measurements, portMAX_DELAY);//queue is of length one. It will never hold more then one set of information
-      } 
-      else {
-        Serial.print("faultQueue is full\n");
-          // Handle queue full condition
-      }
-      digitalWrite(Relays, HIGH); //trigger Relays
       Serial.print("Complete-R\n");
       xSemaphoreGive(InterruptSemaphore);
     }
@@ -271,13 +263,13 @@ void I_Reader(void *parameters) {
     }
     
     Serial.print("Complete-V\n");
-    vTaskDelay(250); // Delay for 500 ms //this seems to crash the task
+    vTaskDelay(1000); // Delay for 500 ms //this seems to crash the task
     }
   
 }
 
-int Fault_Check(double Line1, double Line2, double Line3, double Line0){ //line0 is neutral
-  int fault_ID =0;
+uint8_t Fault_Check(double Line1, double Line2, double Line3, double Line0){ //line0 is neutral
+  uint8_t fault_ID =0;
   if (Line1 > pickup_current || Line2 > pickup_current || Line3 > pickup_current) {
     if (Line1 > pickup_current && Line2 > pickup_current) {
       Serial.print("RED GREEN\n");
@@ -319,31 +311,36 @@ void Sample_data(int reading, struct Min_Max &Current_Extrema)
 }
 
 void taskISR(void *pvParameters) {
-  int buttonState = 0;
+  int buttonState = digitalRead(Button_Loc); 
     while (1) {
-      Serial.println("FAULT\n");
         //if given access to the Semaphore hold onto it an don't let the Current Reader run. 
       if (xSemaphoreTake(InterruptSemaphore, (TickType_t) 5 ) == pdTRUE) {
+          digitalWrite(Relays, HIGH); //trigger Relays
+          vTaskSuspend(TaskREADER); // Suspend the Current Reader Task
           digitalWrite(Buzzer_Pin, 1); //Multiple Times
           vTaskDelay(50);
           digitalWrite(Buzzer_Pin, 0);
           vTaskDelay(50);
           Serial.print("Complete-B\n");
+          Serial.println("FAULT\n");
 
-
-          buttonState = digitalRead(Button_Loc); //Check Constantly
+           //Check Constantly
+          buttonState = digitalRead(Button_Loc); 
           if (buttonState == HIGH) {
           //Release the Semaphore
+          Serial.print("Complete-Check\n");
+          vTaskResume(TaskREADER);
           digitalWrite(Relays, LOW);//Deactivate Relays
           } 
           else{
             xSemaphoreGive(InterruptSemaphore);
           }
           Serial.print("Complete-Check\n");
+          //vTaskDelay(30);
       }
-        
-        //Delay or yield as needed
-      Serial.println("NO FAULT\n");
+    else {
+        Serial.println("NO FAULT\n");
+    } 
       vTaskDelay(100); // Adjust delay as needed
     }
 }
