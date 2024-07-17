@@ -2,12 +2,12 @@
 //#include <LibPrintf.h>
 #include <LiquidCrystal_I2C.h> // I2C LCD
 #include <queue.h>
-//#include <Wire.h> // I2C communication
+#include <Wire.h> // I2C communication
 //#include <Arduino.h>
 #include <semphr.h>
 
 
-
+//Wire.setClock(400000); 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address (address,Column,row)
 //Values used in Calculations // These values would be better in a Queue.
 int FT = 1;
@@ -95,8 +95,8 @@ void setup() {
 
   // Stack Sizes can be optimized once functionality is proven.
   //         (Func_name,  User_name, Stk,          Parameters,  Priority,          Handler);
-  xTaskCreate( Disp_LCD, "Dis_Info", 140,    NULL,         2,      NULL); //Task to Display information to the LCD Screen
-  xTaskCreate( I_Reader, "Read_Cur", 180,    NULL,         3,      &TaskREADER); //Task to get the readings of the current
+  //xTaskCreate( Disp_LCD, "Dis_Info", 140,    NULL,         3,      NULL); //Task to Display information to the LCD Screen
+  xTaskCreate( I_Reader, "Read_Cur", 180,    NULL,         2,      &TaskREADER); //Task to get the readings of the current
   xTaskCreate(  taskISR, "Task_ISR",  80,    NULL,         1,      NULL);
 
   //Serial.print("Tasks Initialized\n");
@@ -130,7 +130,7 @@ void Disp_LCD(void * parameters) {
   // }
   while (1) {
     //Serial.print("Start-P\n");
-    if (xQueueReceive(structQueue, &readings, (TickType_t) 1000 ) == pdPASS) { //If the Measurements are received then display them to the LCD.
+    if (xQueueReceive(structQueue, &readings, (TickType_t) 10 ) == pdPASS) { //If the Measurements are received then display them to the LCD.
 
       //Serial.print("got");
       Disp_Current_and_Voltage("RED Line"   ,readings.Value_1,readings.Current_1);
@@ -164,7 +164,7 @@ void I_Reader(void *parameters) {
     struct Min_Max Extrema_3 = {1024,0};
     //xSemaphoreTake(InterruptSemaphore, portMAX_DELAY); //Takes priority of the Semaphore
     // Sample analog values for half a second
-    while ((millis() - start_time) < 200) {
+    while ((millis() - start_time) < 1000) {
       Measurements.Value_0 = analogRead(Analog0); // Collect Readings from each pin
       Measurements.Value_1 = analogRead(Analog1);
       Measurements.Value_2 = analogRead(Analog2);
@@ -175,7 +175,9 @@ void I_Reader(void *parameters) {
       Extrema_2 = Sample_data(Measurements.Value_2,Extrema_2);
       Extrema_3 = Sample_data(Measurements.Value_3,Extrema_3);
     }
-    Measurements.Value_0 = (((Extrema_0.max - Extrema_0.min) * 5.0)/1024.0)/2.0 *0.707; //RMS voltage calculations
+
+
+    Measurements.Value_0 = (((Extrema_0.max - Extrema_0.min) * 5.0)/1024.0)/2.0 *0.707; //RMS voltage calculations Extrema_0.max - Extrema_0.min
     Measurements.Value_1 = (((Extrema_1.max - Extrema_1.min) * 5.0)/1024.0)/2.0 *0.707;
     Measurements.Value_2 = (((Extrema_2.max - Extrema_2.min) * 5.0)/1024.0)/2.0 *0.707;
     Measurements.Value_3 = (((Extrema_3.max - Extrema_3.min) * 5.0)/1024.0)/2.0 *0.707;
@@ -196,7 +198,7 @@ void I_Reader(void *parameters) {
     // Serial.println(Measurements.Current_3);
     //vTaskDelay(1200);
     // Send measurements to the queue
-    Fault_Case = Fault_Check(Measurements.Current_1,Measurements.Current_2,Measurements.Current_3,Measurements.Current_0);
+    Fault_Case = 0;// Fault_Check(Measurements.Current_1,Measurements.Current_2,Measurements.Current_3,Measurements.Current_0);
     // print something to lcd
     if (Fault_Case > 0) {
       // print something else to lcd
@@ -255,9 +257,16 @@ void I_Reader(void *parameters) {
       //vTaskDelay(200);
       xSemaphoreGive(InterruptSemaphore);
     }
-    else if (uxQueueSpacesAvailable(structQueue) > 0) {
-      xQueueSend(structQueue, &Measurements, portMAX_DELAY);//queue is of length one. It will never hold more then one set of information
+    //else if (uxQueueSpacesAvailable(structQueue) > 0) {
+    else {
+      //xQueueSend(structQueue, &Measurements, portMAX_DELAY);//queue is of length one. It will never hold more then one set of information
+      Disp_Current_and_Voltage("RED Line"   ,Measurements.Value_1,Measurements.Current_1);
+      Disp_Current_and_Voltage("BLUE Line"  ,Measurements.Value_2,Measurements.Current_2);
+      Disp_Current_and_Voltage("YELLOW Line",Measurements.Value_3,Measurements.Current_3);
+      Disp_Current_and_Voltage("NEUTRAL"    ,Measurements.Value_0,Measurements.Current_0);
+      lcd.clear();   
     }     
+    //lcd.print(Fault_Case);
     //Serial.print("Complete-V\n");
     vTaskDelay(500); // Delay for 500 ms //this seems to crash the task
     }
@@ -320,7 +329,7 @@ void taskISR(void *pvParameters) {
     while (1) {
       //vTaskDelay(500);
         //if given access to the Semaphore hold onto it an don't let the Current Reader run. 
-      if (xSemaphoreTake(InterruptSemaphore, (TickType_t) 500 ) == pdTRUE) {
+      if (xSemaphoreTake(InterruptSemaphore, (TickType_t) 10 ) == pdTRUE) {
           digitalWrite(Relays, HIGH); //trigger Relays
           vTaskSuspend(TaskREADER); // Suspend the Current Reader Task
           digitalWrite(Buzzer_Pin, 1); //Multiple Times
