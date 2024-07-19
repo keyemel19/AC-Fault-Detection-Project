@@ -92,7 +92,7 @@ void setup() {
   lcd.print("FAULT DETECTION");
   lcd.setCursor (0, 1);
   lcd.print("     SYSTEM"); 
-
+  digitalWrite(Relays, HIGH);
   // Stack Sizes can be optimized once functionality is proven.
   //         (Func_name,  User_name, Stk,          Parameters,  Priority,          Handler);
   //xTaskCreate( Disp_LCD, "Dis_Info", 140,    NULL,         3,      NULL); //Task to Display information to the LCD Screen
@@ -177,20 +177,20 @@ void I_Reader(void *parameters) {
     }
 
 
-    Measurements.Value_0 = (((Extrema_0.max - Extrema_0.min) * 5.0)/1024.0)/2.0 *0.707; //RMS voltage calculations Extrema_0.max - Extrema_0.min
-    Measurements.Value_1 = (((Extrema_1.max - Extrema_1.min) * 5.0)/1024.0)/2.0 *0.707;
-    Measurements.Value_2 = (((Extrema_2.max - Extrema_2.min) * 5.0)/1024.0)/2.0 *0.707;
-    Measurements.Value_3 = (((Extrema_3.max - Extrema_3.min) * 5.0)/1024.0)/2.0 *0.707;
+    Measurements.Value_0 =Extrema_0.max; //(((Extrema_0.max* 5.0/1024.0))); //+ Extrema_0.min) * 5.0)/1024.0)/(2.0 *0.707); //RMS voltage calculations Extrema_0.max - Extrema_0.min
+    Measurements.Value_1 =Extrema_1.max; //(((Extrema_1.max* 5.0/1024.0))); //+ Extrema_1.min) * 5.0)/1024.0)/(2.0 *0.707);
+    Measurements.Value_2 =Extrema_2.max; //(((Extrema_2.max* 5.0/1024.0))); //+ Extrema_2.min) * 5.0)/1024.0)/(2.0 *0.707);
+    Measurements.Value_3 =Extrema_3.max; //(((Extrema_3.max* 5.0/1024.0))); //+ Extrema_3.min) * 5.0)/1024.0)/(2.0 *0.707);
     
     // Serial.println(Measurements.Value_0);
     // Serial.println(Measurements.Value_1);
     // Serial.println(Measurements.Value_2);
     // Serial.println(Measurements.Value_3);
 
-    Measurements.Current_0 = Measurements.Value_0 *1000/100;
-    Measurements.Current_1 = Measurements.Value_1 *1000/100;
-    Measurements.Current_2 = Measurements.Value_2 *1000/100;
-    Measurements.Current_3 = Measurements.Value_3 *1000/100;
+    Measurements.Current_0 =Extrema_0.min; //Measurements.Value_0 /40;//*1000/100;
+    Measurements.Current_1 =Extrema_1.min; //Measurements.Value_1 /40;//*1000/100;
+    Measurements.Current_2 =Extrema_2.min; //Measurements.Value_2 /40;//*1000/100;
+    Measurements.Current_3 =Extrema_3.min; //Measurements.Value_3 /40;//*1000/100;
 
     //Serial.println(Measurements.Current_0);
     // Serial.println(Measurements.Current_1);
@@ -198,7 +198,7 @@ void I_Reader(void *parameters) {
     // Serial.println(Measurements.Current_3);
     //vTaskDelay(1200);
     // Send measurements to the queue
-    Fault_Case = 0;// Fault_Check(Measurements.Current_1,Measurements.Current_2,Measurements.Current_3,Measurements.Current_0);
+    Fault_Case =  Fault_Check(Measurements.Current_1,Measurements.Current_2,Measurements.Current_3,Measurements.Current_0);
     // print something to lcd
     if (Fault_Case > 0) {
       // print something else to lcd
@@ -268,7 +268,7 @@ void I_Reader(void *parameters) {
     }     
     //lcd.print(Fault_Case);
     //Serial.print("Complete-V\n");
-    vTaskDelay(500); // Delay for 500 ms //this seems to crash the task
+    vTaskDelay(100); // Delay for 500 ms //this seems to crash the task
     }
   
 }
@@ -326,12 +326,16 @@ Min_Max Sample_data(int reading, struct Min_Max Current_Extrema)
 
 void taskISR(void *pvParameters) {
   int buttonState = digitalRead(Button_Loc); 
+  int Occurance = 1;
     while (1) {
       //vTaskDelay(500);
         //if given access to the Semaphore hold onto it an don't let the Current Reader run. 
       if (xSemaphoreTake(InterruptSemaphore, (TickType_t) 10 ) == pdTRUE) {
-          digitalWrite(Relays, HIGH); //trigger Relays
-          vTaskSuspend(TaskREADER); // Suspend the Current Reader Task
+          if (Occurance){
+            digitalWrite(Relays,LOW); //trigger Relays
+            vTaskSuspend(TaskREADER); // Suspend the Current Reader Task //THIS MAY CRASH THE CODE
+            Occurance =0;
+          }
           digitalWrite(Buzzer_Pin, 1); //Multiple Times
           vTaskDelay(50);
           digitalWrite(Buzzer_Pin, 0);
@@ -346,6 +350,7 @@ void taskISR(void *pvParameters) {
             //Serial.print("Complete-Check\n");
             vTaskResume(TaskREADER);
             digitalWrite(Relays, LOW);//Deactivate Relays
+            Occurance = 1;
           } 
           else{
             xSemaphoreGive(InterruptSemaphore);
